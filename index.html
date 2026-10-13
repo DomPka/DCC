@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Car Counter</title>
+    <meta name="description" content="Count vehicles crossing lines in drone or camera video, live on your phone or from a video file. Runs entirely in the browser." />
+    <meta name="theme-color" content="#2B2F33" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="preload" href="fonts/overpass-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="css/app.css" />
+    <script type="module" src="js/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Car Counter home">
+        <svg viewBox="0 0 32 32" aria-hidden="true" class="brand-mark"><use href="#i-mark" /></svg>
+        <span>Car Counter</span>
+      </a>
+      <div class="status" id="status" aria-live="polite">
+        <span class="chip" id="chip-engine">Loading model</span>
+        <span class="chip" id="chip-speed" hidden></span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="stage-wrap" aria-label="Video">
+        <div class="stage is-empty" id="stage">
+          <video id="video" playsinline muted preload="auto"></video>
+          <canvas id="overlay"></canvas>
+
+          <div class="stage-empty" id="stage-empty">
+            <p class="stage-title">Count vehicles crossing a line</p>
+            <p class="stage-sub">Use the phone camera for a live count, or open a recorded video.</p>
+            <div class="stage-actions">
+              <button class="btn btn-solid" id="btn-camera-empty" type="button">
+                <svg aria-hidden="true"><use href="#i-camera" /></svg>Start camera
+              </button>
+              <label class="btn btn-ghost-light" for="file-input">
+                <svg aria-hidden="true"><use href="#i-film" /></svg>Open video
+              </label>
+            </div>
+          </div>
+
+          <div class="stage-loading" id="stage-loading" hidden>
+            <p id="loading-text">Downloading detection model</p>
+            <div class="bar"><div class="bar-fill" id="loading-bar"></div></div>
+          </div>
+        </div>
+
+        <div class="stage-hint" id="stage-hint" hidden>
+          <span id="stage-hint-text"></span>
+          <button class="btn btn-small" id="btn-edit-done" type="button">Done</button>
+        </div>
+
+        <div class="transport" id="transport" hidden>
+          <button class="btn btn-solid" id="btn-run" type="button">
+            <svg aria-hidden="true"><use href="#i-play" /></svg><span>Start counting</span>
+          </button>
+          <button class="btn" id="btn-add-line" type="button">
+            <svg aria-hidden="true"><use href="#i-plus" /></svg>Add line
+          </button>
+          <button class="btn" id="btn-edit-lines" type="button">
+            <svg aria-hidden="true"><use href="#i-edit" /></svg>Edit lines
+          </button>
+          <button class="btn btn-quiet" id="btn-source" type="button" aria-haspopup="true">
+            <svg aria-hidden="true"><use href="#i-swap" /></svg>Change source
+          </button>
+          <div class="progress" id="progress" hidden>
+            <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Video position" />
+            <span class="progress-time" id="progress-time">0:00 / 0:00</span>
+          </div>
+          <p class="warning" id="slow-warning" hidden></p>
+        </div>
+      </section>
+
+      <aside class="panel" aria-label="Counts and settings">
+        <section class="tally" aria-labelledby="tally-title">
+          <h2 id="tally-title" class="visually-hidden">Counts</h2>
+          <div class="tally-total">
+            <span class="tally-number" id="total">0</span>
+            <span class="tally-caption">vehicles counted</span>
+          </div>
+          <div class="tally-split">
+            <span><b id="total-in">0</b> in</span>
+            <span><b id="total-out">0</b> out</span>
+            <span><b id="active-tracks">0</b> on screen</span>
+          </div>
+          <ol class="lines" id="lines"></ol>
+          <p class="empty-note" id="lines-empty">No counting lines yet. Add one across the road; vehicles are counted when their centre crosses it.</p>
+          <div class="export">
+            <button class="btn" id="btn-csv-intervals" type="button" disabled>
+              <svg aria-hidden="true"><use href="#i-download" /></svg>Counts per interval
+            </button>
+            <button class="btn" id="btn-csv-events" type="button" disabled>
+              <svg aria-hidden="true"><use href="#i-download" /></svg>Every vehicle
+            </button>
+            <button class="btn btn-quiet" id="btn-reset" type="button" disabled>Reset counts</button>
+          </div>
+        </section>
+
+        <details class="settings" id="settings">
+          <summary><svg aria-hidden="true"><use href="#i-gear" /></svg>Detection settings</summary>
+          <div class="settings-body">
+            <label class="field">
+              <span>Model</span>
+              <select id="set-model">
+                <option value="models/yolo26n.onnx">Fast: YOLO26n (10 MB)</option>
+                <option value="models/yolo26s.onnx">Accurate: YOLO26s (38 MB)</option>
+                <option value="custom">Your own .onnx file…</option>
+              </select>
+            </label>
+            <input type="file" id="model-file" accept=".onnx" hidden />
+            <p class="field-note" id="model-note"></p>
+
+            <label class="field">
+              <span>Detection size</span>
+              <select id="set-size">
+                <option value="320">320 px, fastest</option>
+                <option value="480">480 px</option>
+                <option value="640" selected>640 px, balanced</option>
+                <option value="800">800 px</option>
+                <option value="960">960 px, small vehicles</option>
+                <option value="1280">1280 px, high drone altitude</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Confidence <output id="conf-out">0.40</output></span>
+              <input type="range" id="set-conf" min="0.2" max="0.8" step="0.05" value="0.4" />
+            </label>
+
+            <fieldset class="field">
+              <legend>Count these</legend>
+              <div class="checks" id="set-classes"></div>
+            </fieldset>
+
+            <label class="field">
+              <span>Point that must cross the line</span>
+              <select id="set-anchor">
+                <option value="center">Centre of the vehicle (drone, top-down)</option>
+                <option value="bottom">Bottom of the box (street-level camera)</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Video file analysis</span>
+              <select id="set-mode">
+                <option value="fast">Fast, adaptive speed</option>
+                <option value="exact">Exact, frame by frame</option>
+              </select>
+            </label>
+            <p class="field-note">Fast plays the video as quickly as this device can analyse it. Exact seeks every frame; slower, but the result is identical on every run.</p>
+
+            <label class="field">
+              <span>Analysed frames per second of video</span>
+              <select id="set-fps">
+                <option value="10">10</option>
+                <option value="15" selected>15, recommended</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>CSV interval</span>
+              <select id="set-interval">
+                <option value="10">10 seconds</option>
+                <option value="30">30 seconds</option>
+                <option value="60" selected>1 minute</option>
+                <option value="300">5 minutes</option>
+                <option value="900">15 minutes</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Recording started at</span>
+              <input type="datetime-local" id="set-start" step="1" />
+            </label>
+            <p class="field-note" id="start-note">Used for clock times in the CSV. Filled in from the video file when it has a timestamp.</p>
+
+            <fieldset class="field">
+              <legend>Show on video</legend>
+              <div class="checks">
+                <label><input type="checkbox" id="show-boxes" checked /> Boxes</label>
+                <label><input type="checkbox" id="show-labels" checked /> Labels</label>
+                <label><input type="checkbox" id="show-trails" checked /> Trails</label>
+              </div>
+            </fieldset>
+
+            <label class="field">
+              <span>Processor</span>
+              <select id="set-engine">
+                <option value="auto">Graphics chip when available</option>
+                <option value="wasm">CPU only</option>
+              </select>
+            </label>
+          </div>
+        </details>
+
+        <footer class="about">
+          <p>Car Counter 2 by <a href="https://github.com/DomPka" rel="noopener">DomPka</a>, Aeronautics Laboratory, VILNIUS TECH.</p>
+          <p>Video never leaves your device; detection runs in the browser.</p>
+          <p class="install-row">
+            <button class="btn btn-small" id="btn-install" type="button" hidden>Install as app</button>
+            <span id="ios-install" hidden>To install on iPhone: Share, then Add to Home Screen.</span>
+          </p>
+        </footer>
+      </aside>
+    </main>
+
+    <input type="file" id="file-input" accept="video/*,.mp4,.mov,.mkv,.webm" hidden />
+
+    <dialog class="sheet" id="source-sheet">
+      <form method="dialog">
+        <p class="sheet-title">Choose a video source</p>
+        <button class="btn btn-solid" value="camera" type="submit"><svg aria-hidden="true"><use href="#i-camera" /></svg>Camera</button>
+        <button class="btn" value="file" type="submit"><svg aria-hidden="true"><use href="#i-film" /></svg>Video file</button>
+        <button class="btn btn-quiet" value="cancel" type="submit">Cancel</button>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-mark" viewBox="0 0 32 32">
+        <rect x="1" y="1" width="30" height="30" rx="7" fill="#2B2F33" />
+        <path d="M4 18h24" stroke="#F2B705" stroke-width="2.5" stroke-dasharray="4 3" />
+        <rect x="10" y="7" width="12" height="20" rx="4" fill="#EEF2F4" />
+        <rect x="12" y="10" width="8" height="4" rx="1.5" fill="#2B2F33" />
+        <rect x="12" y="21" width="8" height="3" rx="1.2" fill="#2B2F33" />
+      </symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h3l2-3h8l2 3h3v11H3z" /><circle cx="12" cy="13" r="3.5" /></symbol>
+      <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" /></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12.5-7.5z" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4" height="15" rx="1" /><rect x="14" y="4.5" width="4" height="15" rx="1" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="17" r="2.2" /><circle cx="19" cy="7" r="2.2" /><path d="M7 15.8 17 8.2" /></symbol>
+      <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14l-3-3M20 16H6l3 3" /></symbol>
+      <symbol id="i-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4v16l-3-3M16 20V4l3 3" /></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></symbol>
+    </svg>
+  </body>
+</html>
