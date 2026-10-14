@@ -4,6 +4,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { cpus } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { FrameSource } from './lib/frames.mjs';
 import { NodeDetector } from './lib/detector-node.mjs';
 import { CountStore, writeAtomic } from './lib/store.mjs';
@@ -14,7 +15,7 @@ import { ByteTracker } from '../js/core/tracker.js';
 import { LineCounter } from '../js/core/counter.js';
 import { wallParts } from '../js/core/countdata.js';
 
-const here = dirname(new URL(import.meta.url).pathname);
+const here = dirname(fileURLToPath(import.meta.url));
 const configPath = resolve(process.argv[2] || join(here, 'config.json'));
 if (!existsSync(configPath)) {
   console.error(`Config not found: ${configPath}\nCopy config.example.json to config.json and set your stream URL.`);

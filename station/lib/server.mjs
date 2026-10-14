@@ -74,7 +74,10 @@ export function startServer({ port, host, webRoot, adminPassword, api, log }) {
 
 function serveStatic(root, path, res, headers) {
   const file = normalize(join(root, path));
-  if (!file.startsWith(root) || /(^|\/)\.|node_modules|\/station\/(data|config)/.test(file.slice(root.length))) {
+  // never serve dotfiles, dependencies, the station's data or its config (may hold a token);
+  // compare with forward slashes so the check also holds on Windows
+  const rel = file.slice(root.length).replace(/\\/g, '/').toLowerCase();
+  if (!file.startsWith(root) || /(^|\/)\.|node_modules|\/station\/(data|config)/.test(rel)) {
     res.writeHead(404, headers).end();
     return;
   }

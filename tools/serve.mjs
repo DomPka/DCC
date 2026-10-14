@@ -3,8 +3,9 @@
 import { createServer } from 'node:http';
 import { createReadStream, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const port = Number(process.argv[2] || 8080);
 const types = {
   '.html': 'text/html; charset=utf-8',

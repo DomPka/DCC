@@ -27,6 +27,10 @@ A web page only counts while it's open, so for 24/7 counting run the **station**
 
 **Needs:** Node.js 20+, FFmpeg, and optionally `yt-dlp` (for page links like YouTube live). Runs on Windows, macOS, Linux and 64-bit Raspberry Pi OS.
 
+**Windows, quickest way:** install the two tools once (PowerShell: `winget install OpenJS.NodeJS.LTS Gyan.FFmpeg`), download this repository (Code → Download ZIP) and unzip it, then double-click `station/start-station.bat`. The first time it installs the detector and opens `config.json` in Notepad: put the camera's stream link in `"url"`, save, and double-click the file again. Leave its window open while counting.
+
+**Other systems:**
+
 ```bash
 cd station
 npm install --ignore-scripts          # CPU build of ONNX Runtime is included
