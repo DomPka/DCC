@@ -17,6 +17,7 @@ export class GitHubPublisher {
     this.branch = o.branch || 'data';
     this.token = o.token;
     this.prefix = (o.prefix ?? 'counts').replace(/^\/|\/$/g, '');
+    this.api = o.apiBase || API;
   }
 
   get rawBase() {
@@ -24,7 +25,7 @@ export class GitHubPublisher {
   }
 
   async call(method, path, body) {
-    const res = await fetch(`${API}/repos/${this.repo}${path}`, {
+    const res = await fetch(`${this.api}/repos/${this.repo}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${this.token}`,

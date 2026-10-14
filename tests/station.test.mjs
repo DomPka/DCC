@@ -98,3 +98,45 @@ test('png encoder writes a valid header', () => {
   assert.equal(png.readUInt32BE(16), 4);
   assert.equal(png.readUInt32BE(20), 3);
 });
+
+test('publisher replaces the data branch with one commit each time', async () => {
+  const { createServer } = await import('node:http');
+  const { GitHubPublisher } = await import('../station/lib/publish.mjs');
+  const calls = [];
+  let ref = null;
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const j = body ? JSON.parse(body) : null;
+      calls.push([req.method, req.url, j]);
+      const send = (code, obj) => {
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(obj));
+      };
+      if (req.method === 'GET' && req.url.endsWith('/git/ref/heads/data')) return ref ? send(200, { object: { sha: ref } }) : send(404, {});
+      if (req.method === 'GET' && req.url.includes('/git/commits/')) return send(200, { tree: { sha: 'tree-old' } });
+      if (req.method === 'POST' && req.url.endsWith('/git/trees')) return send(201, { sha: 'tree-new' });
+      if (req.method === 'POST' && req.url.endsWith('/git/commits')) return send(201, { sha: `commit-${calls.length}` });
+      if (req.url.endsWith('/git/refs') || req.url.endsWith('/git/refs/heads/data')) {
+        ref = j.sha;
+        return send(200, { ref: 'refs/heads/data' });
+      }
+      send(500, {});
+    });
+  });
+  await new Promise((r) => server.listen(0, r));
+  const pub = new GitHubPublisher({ repo: 'me/cc', branch: 'data', token: 't', apiBase: `http://127.0.0.1:${server.address().port}` });
+  await pub.publish({ 'index.json': '{}', 'days/2026-10-14.json': '{"rows":[]}' });
+  await pub.publish({ 'index.json': '{"v":2}' });
+  server.close();
+  const trees = calls.filter((c) => c[1].endsWith('/git/trees'));
+  assert.equal(trees[0][2].base_tree, undefined);
+  assert.deepEqual(trees[0][2].tree.map((t) => t.path), ['counts/index.json', 'counts/days/2026-10-14.json']);
+  assert.equal(trees[1][2].base_tree, 'tree-old'); // keeps earlier day files
+  const commits = calls.filter((c) => c[1].endsWith('/git/commits'));
+  assert.ok(commits.every((c) => c[2].parents.length === 0)); // no history growth
+  const patch = calls.find((c) => c[0] === 'PATCH');
+  assert.equal(patch[2].force, true);
+  assert.equal(pub.rawBase, 'https://raw.githubusercontent.com/me/cc/data/counts/');
+});
