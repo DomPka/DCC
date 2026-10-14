@@ -21,6 +21,7 @@
         <svg viewBox="0 0 32 32" aria-hidden="true" class="brand-mark"><use href="#i-mark" /></svg>
         <span>Car Counter</span>
       </a>
+      <nav class="app-nav"><a href="analytics.html">Analytics</a></nav>
       <div class="status" id="status" aria-live="polite">
         <span class="chip" id="chip-engine">Loading model</span>
         <span class="chip" id="chip-speed" hidden></span>
@@ -35,7 +36,7 @@
 
           <div class="stage-empty" id="stage-empty">
             <p class="stage-title">Count vehicles crossing a line</p>
-            <p class="stage-sub">Use the phone camera for a live count, or open a recorded video.</p>
+            <p class="stage-sub">Use the phone camera for a live count, open a recorded video, or paste a live stream link.</p>
             <div class="stage-actions">
               <button class="btn btn-solid" id="btn-camera-empty" type="button">
                 <svg aria-hidden="true"><use href="#i-camera" /></svg>Start camera
@@ -43,6 +44,9 @@
               <label class="btn btn-ghost-light" for="file-input">
                 <svg aria-hidden="true"><use href="#i-film" /></svg>Open video
               </label>
+              <button class="btn btn-ghost-light" id="btn-stream-empty" type="button">
+                <svg aria-hidden="true"><use href="#i-globe" /></svg>Stream link
+              </button>
             </div>
           </div>
 
@@ -204,7 +208,7 @@
 
         <footer class="about">
           <p>Car Counter 2 by <a href="https://github.com/DomPka" rel="noopener">DomPka</a>, Aeronautics Laboratory, VILNIUS TECH.</p>
-          <p>Video never leaves your device; detection runs in the browser.</p>
+          <p>Video never leaves your device; detection runs in the browser. Counts with a recording time are saved on this device for <a href="analytics.html?source=device">Analytics</a>.</p>
           <p class="install-row">
             <button class="btn btn-small" id="btn-install" type="button" hidden>Install as app</button>
             <span id="ios-install" hidden>To install on iPhone: Share, then Add to Home Screen.</span>
@@ -220,7 +224,21 @@
         <p class="sheet-title">Choose a video source</p>
         <button class="btn btn-solid" value="camera" type="submit"><svg aria-hidden="true"><use href="#i-camera" /></svg>Camera</button>
         <button class="btn" value="file" type="submit"><svg aria-hidden="true"><use href="#i-film" /></svg>Video file</button>
+        <button class="btn" value="stream" type="submit"><svg aria-hidden="true"><use href="#i-globe" /></svg>Internet stream</button>
         <button class="btn btn-quiet" value="cancel" type="submit">Cancel</button>
+      </form>
+    </dialog>
+
+    <dialog class="sheet" id="stream-sheet">
+      <form method="dialog">
+        <p class="sheet-title">Count from a live stream</p>
+        <label class="field">
+          <span>Stream link (.m3u8 or .mp4)</span>
+          <input type="url" id="stream-url" placeholder="https://…/playlist.m3u8" required />
+        </label>
+        <p class="field-note">Works when the stream's server allows other websites to read it. Many news and TV sites don't; for those, use the counting station, which can read any stream.</p>
+        <button class="btn btn-solid" value="open" type="submit">Open stream</button>
+        <button class="btn btn-quiet" value="cancel" type="submit" formnovalidate>Cancel</button>
       </form>
     </dialog>
 
@@ -236,6 +254,7 @@
       </symbol>
       <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h3l2-3h8l2 3h3v11H3z" /><circle cx="12" cy="13" r="3.5" /></symbol>
       <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" /></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z" /></symbol>
       <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12.5-7.5z" /></symbol>
       <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4" height="15" rx="1" /><rect x="14" y="4.5" width="4" height="15" rx="1" /></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></symbol>

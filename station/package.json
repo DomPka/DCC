@@ -1,0 +1,18 @@
+{
+  "name": "car-counter-station",
+  "version": "2.0.0",
+  "description": "Always-on vehicle counting from a live camera stream (Car Counter 2)",
+  "type": "module",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "author": "Dominykas Petrulaitis (DomPka), Aeronautics Laboratory, VILNIUS TECH",
+  "scripts": {
+    "start": "node station.mjs config.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "onnxruntime-node": "1.30.0"
+  }
+}

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Counting Station</title>
+    <meta name="theme-color" content="#2B2F33" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/analytics.css" />
+    <script type="module" src="js/station-page.js"></script>
+  </head>
+  <body class="viz-root">
+    <header class="topbar">
+      <a class="brand" href="station.html" aria-label="Counting station">
+        <img src="icons/icon.svg" alt="" class="brand-mark" />
+        <span id="st-name">Counting station</span>
+      </a>
+      <nav class="topnav">
+        <a href="analytics.html">Analytics</a>
+        <a href="./index.html">Counter</a>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <section class="stage-wrap" aria-label="Camera">
+        <div class="stage" id="stage">
+          <img id="snap" alt="Latest camera picture" class="snap" />
+          <canvas id="overlay"></canvas>
+          <div class="stage-empty" id="stage-empty">
+            <p class="stage-title" id="empty-title">Connecting to the station</p>
+            <p class="stage-sub" id="empty-sub"></p>
+          </div>
+        </div>
+        <div class="stage-hint" id="stage-hint" hidden>
+          <span id="stage-hint-text"></span>
+          <button class="btn btn-small" id="btn-edit-done" type="button">Done</button>
+        </div>
+        <div class="transport">
+          <button class="btn btn-solid" id="btn-save" type="button" disabled>Save lines</button>
+          <button class="btn" id="btn-add-line" type="button"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>Add line</button>
+          <button class="btn" id="btn-edit-lines" type="button">Edit lines</button>
+          <label class="btn btn-quiet"><input type="checkbox" id="show-tracks" checked /> Show vehicles</label>
+        </div>
+      </section>
+
+      <aside class="panel" aria-label="Station status and lines">
+        <p class="an-status" id="st-status">Loading…</p>
+        <div class="tally-total">
+          <span class="tally-number" id="st-today">0</span>
+          <span class="tally-caption">vehicles today</span>
+        </div>
+        <div class="tally-split">
+          <span><b id="st-hour">0</b> this hour</span>
+          <span><b id="st-fps">0</b> frames analysed per second</span>
+        </div>
+        <ol class="lines" id="lines"></ol>
+        <p class="empty-note" id="lines-empty">No counting lines yet. Tap Add line, then tap two points across the road on the camera picture, and Save lines.</p>
+        <p class="empty-note" id="publish-note" hidden></p>
+        <footer class="about">
+          <p>Counts shown next to each line are since the station last started. Full history is on the Analytics page.</p>
+          <p>Car Counter 2 by DomPka, Aeronautics Laboratory, VILNIUS TECH.</p>
+        </footer>
+      </aside>
+    </main>
+    <div class="toast" id="toast" role="status" hidden></div>
+  </body>
+</html>

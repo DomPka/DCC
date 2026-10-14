@@ -2,16 +2,24 @@
 // cross-origin isolation headers (COOP/COEP) that GitHub Pages cannot send itself.
 // Isolation unlocks SharedArrayBuffer, so the CPU (WASM) detector can use several threads.
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const SHELL_CACHE = `cc-shell-${VERSION}`;
 const ASSET_CACHE = 'cc-assets-v1'; // models + ONNX Runtime; large, kept across app versions
 
 const SHELL = [
   './',
   'index.html',
+  'analytics.html',
+  'station.html',
   'manifest.webmanifest',
   'css/app.css',
+  'css/analytics.css',
   'js/app.js',
+  'js/analytics.js',
+  'js/charts.js',
+  'js/sessions.js',
+  'js/station-page.js',
+  'js/core/countdata.js',
   'js/detector.js',
   'js/detector.worker.js',
   'js/overlay.js',
@@ -59,6 +67,7 @@ self.addEventListener('fetch', (event) => {
   if (req.cache === 'only-if-cached' && req.mode !== 'same-origin') return;
 
   const path = url.pathname;
+  if (/\/(api|data)\//.test(path)) return; // live station data: always from the network
   if (/\/(models|vendor)\//.test(path)) {
     event.respondWith(cacheFirst(req, ASSET_CACHE));
   } else if (req.mode === 'navigate') {

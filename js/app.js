@@ -6,6 +6,7 @@ import { eventsCsv, intervalCsv } from './core/csv.js';
 import { readMp4CreationTime } from './core/mp4time.js';
 import { Overlay, classColor } from './overlay.js';
 import { Runner } from './runner.js';
+import { SessionRecorder } from './sessions.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -126,6 +127,8 @@ let pending = null;
 let drag = null;
 let wakeLock = null;
 let customModel = null; // {name, buffer}
+let recorder = null; // saves this counting run for the analytics page
+let hls = null;
 
 // ---------------------------------------------------------------- startup
 init();
@@ -259,7 +262,7 @@ async function openFile(file) {
   if (!file) return;
   stopSource();
   const url = URL.createObjectURL(file);
-  source = { kind: 'file', name: file.name, url };
+  source = { kind: 'file', name: file.name, url, key: `file:${file.name}:${file.size}` };
   const v = els.video;
   v.srcObject = null;
   v.src = url;
@@ -309,14 +312,79 @@ async function startCamera() {
   afterSourceReady();
   runner.setMode('live', 30);
   els.progress.hidden = true;
+  setStartDate(null, 'Set automatically when counting starts.');
+}
+
+function nowDigits() {
   const now = new Date();
-  setStartDate(
-    new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds())),
-    'Set to when counting starts.',
-  );
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()));
+}
+
+async function openStream(url) {
+  if (!url) return;
+  stopSource();
+  let host = url;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    toast('That is not a valid link.');
+    return;
+  }
+  source = { kind: 'stream', name: host, url };
+  const v = els.video;
+  v.srcObject = null;
+  v.crossOrigin = 'anonymous';
+  v.muted = true;
+  const isHls = /\.m3u8(\?|$)/i.test(url);
+  try {
+    if (isHls && !v.canPlayType('application/vnd.apple.mpegurl')) {
+      const { default: Hls } = await import('../vendor/hls/hls.light.min.mjs');
+      if (!Hls.isSupported()) throw new Error('this browser cannot play HLS streams');
+      hls = new Hls({ liveSyncDurationCount: 3, lowLatencyMode: false });
+      let fatalCount = 0;
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+        if (!data.fatal) return;
+        fatalCount++;
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && fatalCount < 5) hls.recoverMediaError();
+        else if (fatalCount < 1000) setTimeout(() => hls?.loadSource(url), Math.min(60, 5 * fatalCount) * 1000); // keep trying: streams drop
+      });
+      hls.loadSource(url);
+      hls.attachMedia(v);
+    } else {
+      v.src = url;
+    }
+    v.play().catch(() => {}); // may stay pending until data arrives, so don't wait on it
+    if (!v.videoWidth) await once(v, 'loadeddata', 20000);
+    // make sure the browser lets us read the pixels (the server must allow cross-origin use)
+    const probe = new OffscreenCanvas(8, 8).getContext('2d');
+    probe.drawImage(v, 0, 0, 8, 8);
+    probe.getImageData(0, 0, 1, 1);
+  } catch (err) {
+    stopSource();
+    els.empty.hidden = false;
+    els.stage.classList.add('is-empty');
+    els.transport.hidden = true;
+    toast(
+      err?.name === 'SecurityError' || /timeout|network|manifest/i.test(String(err?.message))
+        ? "This stream's server doesn't let other websites analyse it. Use the counting station for this camera."
+        : `The stream could not be opened: ${err.message}`,
+    );
+    return;
+  }
+  afterSourceReady();
+  runner.setMode('live', 30);
+  els.progress.hidden = true;
+  setStartDate(null, 'Set automatically when counting starts.');
+  // keep counting through stalls: the live runner simply waits for new frames
+  v.addEventListener('pause', () => runner.state === 'running' && source?.kind === 'stream' && v.play().catch(() => {}));
 }
 
 function stopSource() {
+  closeRecorder();
+  if (hls) {
+    hls.destroy();
+    hls = null;
+  }
   runner.reset();
   releaseWakeLock();
   if (source?.stream) source.stream.getTracks().forEach((t) => t.stop());
@@ -354,6 +422,7 @@ function seekPreview(t) {
 
 function setStartDate(date, note) {
   startDate = date;
+  recorder?.setStart(date);
   els.set.start.value = date ? date.toISOString().slice(0, 19) : '';
   els.set.startNote.textContent = note;
 }
@@ -386,9 +455,11 @@ async function analyse(t) {
   const events = counter.update(tracks, t);
   if (++frameCount % 30 === 0) counter.prune(tracker.liveKeys());
   lastTracks = tracks.filter((tr) => tr.activated);
+  if (recorder) recorder.frame(t);
   for (const e of events) {
     overlay.flash.set(e.lineId, performance.now());
     flashRow(e.lineId);
+    recorder?.event(e);
   }
   render();
   updateTally();
@@ -396,7 +467,22 @@ async function analyse(t) {
   return true;
 }
 
+function closeRecorder() {
+  if (recorder) recorder.close();
+  recorder = null;
+}
+
+function ensureRecorder() {
+  if (recorder || !source) return;
+  recorder = new SessionRecorder({ name: source.name, kind: source.kind });
+  // counting the same video file again replaces its earlier saved result
+  if (source.key) recorder.s.id = source.key;
+  recorder.setStart(startDate);
+  recorder.setMeta(lines, names);
+}
+
 function resetCounting(silent) {
+  closeRecorder();
   tracker.reset(true);
   counter.resetCounts();
   lastTracks = [];
@@ -428,12 +514,15 @@ function onRunClick() {
     }
   }
   if (source.kind === 'file') runner.setMode(settings.mode, Number(settings.fps));
+  if (source.kind !== 'file' && !runner.liveStart) setStartDate(nowDigits(), 'Set to when counting started.');
   syncCounterLines();
+  ensureRecorder();
   runner.start();
 }
 
 runner.onState = (state) => {
   updateRunButton();
+  if (state !== 'running') recorder?.flush();
   if (state === 'running') requestWakeLock();
   else releaseWakeLock();
   if (state === 'done') {
@@ -492,6 +581,7 @@ function syncCounterLines() {
 
 function saveLines() {
   store.set('cc.lines', lines.map(({ id, name, a, b }) => ({ id, name, a, b })));
+  recorder?.setMeta(lines, names);
 }
 
 function linesForDrawing() {
@@ -797,6 +887,7 @@ function bindUi() {
   s.start.addEventListener('change', () => {
     const m = s.start.value.match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(?::(\d\d))?/);
     startDate = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0))) : null;
+    recorder?.setStart(startDate);
   });
   for (const k of ['boxes', 'labels', 'trails']) {
     s[k].addEventListener('change', () => {
@@ -828,7 +919,18 @@ function bindUi() {
   els.sheet.addEventListener('close', () => {
     if (els.sheet.returnValue === 'camera') startCamera();
     else if (els.sheet.returnValue === 'file') els.fileInput.click();
+    else if (els.sheet.returnValue === 'stream') askStream();
   });
+  $('btn-stream-empty').addEventListener('click', askStream);
+  const streamSheet = $('stream-sheet');
+  streamSheet.addEventListener('close', () => {
+    if (streamSheet.returnValue === 'open') {
+      const url = $('stream-url').value.trim();
+      store.set('cc.stream', url);
+      openStream(url);
+    }
+  });
+  addEventListener('pagehide', () => recorder?.flush());
   els.seek.addEventListener('input', async () => {
     if (runner.state === 'running' || source?.kind !== 'file') return;
     const t = (Number(els.seek.value) / 1000) * (els.video.duration || 0);
@@ -855,6 +957,13 @@ function bindUi() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && runner.state === 'running') requestWakeLock();
   });
+}
+
+function askStream() {
+  const d = $('stream-sheet');
+  $('stream-url').value = store.get('cc.stream', '') || '';
+  if (d.showModal) d.showModal();
+  else openStream(prompt('Stream link (.m3u8 or .mp4)') || '');
 }
 
 // ---------------------------------------------------------------- small helpers
@@ -935,4 +1044,4 @@ function setupInstall() {
 }
 
 // exposed for automated tests
-window.__carCounter = { detector, tracker, counter, runner, get lines() { return lines; }, set lines(v) { lines = v; saveLines(); syncCounterLines(); renderLineList(); render(); }, openFile, analyse };
+window.__carCounter = { detector, tracker, counter, runner, openStream, get recorder() { return recorder; }, get lines() { return lines; }, set lines(v) { lines = v; saveLines(); syncCounterLines(); renderLineList(); render(); }, openFile, analyse };

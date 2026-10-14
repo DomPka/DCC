@@ -1,0 +1,5 @@
+node_modules
+station/node_modules
+station/data
+e2e-results
+.git

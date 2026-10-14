@@ -164,6 +164,29 @@ a {
   width: 28px;
   height: 28px;
 }
+.app-nav {
+  margin-left: auto;
+}
+.app-nav a {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
+  color: #d9e1e6;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+.app-nav a:hover {
+  background: var(--asphalt-2);
+}
+.sheet .field input {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1.5px solid var(--rule);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  width: 100%;
+}
 .status {
   display: flex;
   gap: 6px;

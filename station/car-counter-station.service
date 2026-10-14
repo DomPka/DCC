@@ -1,0 +1,20 @@
+# systemd unit for Linux / Raspberry Pi: starts the station at boot and restarts it if it stops.
+#   sudo cp car-counter-station.service /etc/systemd/system/
+#   sudo systemctl enable --now car-counter-station
+#   journalctl -u car-counter-station -f      # watch the log
+[Unit]
+Description=Car Counter station (always-on vehicle counting)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# change the user and paths to where you cloned the repository
+User=pi
+WorkingDirectory=/home/pi/car-counter/station
+Environment=GITHUB_TOKEN=put-your-token-here
+ExecStart=/usr/bin/node station.mjs config.json
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

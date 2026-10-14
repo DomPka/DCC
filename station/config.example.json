@@ -1,0 +1,23 @@
+{
+  "name": "My street camera",
+  "stream": {
+    "url": "https://example.com/live/playlist.m3u8",
+    "fps": 10,
+    "maxWidth": 1280
+  },
+  "model": "../models/yolo26n.onnx",
+  "inputSize": 640,
+  "confidence": 0.4,
+  "classes": ["car", "truck", "bus", "motorcycle"],
+  "anchor": "center",
+  "timezone": "Europe/Vilnius",
+  "dataDir": "./data",
+  "http": { "port": 8090, "host": "0.0.0.0", "adminPassword": "change-me" },
+  "publish": {
+    "repo": "DomPka/car-counter",
+    "branch": "data",
+    "folder": "counts",
+    "tokenEnv": "GITHUB_TOKEN",
+    "everyMinutes": 10
+  }
+}

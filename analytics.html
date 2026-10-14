@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Traffic Analytics</title>
+    <meta name="description" content="Vehicle counts by hour, day and weekday from Car Counter." />
+    <meta name="theme-color" content="#2B2F33" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/analytics.css" />
+    <script type="module" src="js/analytics.js"></script>
+  </head>
+  <body class="analytics viz-root">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Car Counter">
+        <img src="icons/icon.svg" alt="" class="brand-mark" />
+        <span>Traffic analytics</span>
+      </a>
+      <nav class="topnav">
+        <a href="./">Counter</a>
+        <a href="station.html" id="nav-station" hidden>Station</a>
+      </nav>
+    </header>
+
+    <main class="an-main">
+      <form class="filters" id="filters" aria-label="Filters" onsubmit="return false">
+        <label class="f-field">
+          <span>Data</span>
+          <select id="f-source">
+            <option value="remote">Counting station</option>
+            <option value="device">Counts made on this device</option>
+            <option value="csv">CSV file…</option>
+          </select>
+        </label>
+        <label class="f-field">
+          <span>Period</span>
+          <select id="f-range">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7" selected>Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="all">Everything</option>
+            <option value="custom">Choose dates…</option>
+          </select>
+        </label>
+        <label class="f-field" id="f-from-wrap" hidden><span>From</span><input type="date" id="f-from" /></label>
+        <label class="f-field" id="f-to-wrap" hidden><span>To</span><input type="date" id="f-to" /></label>
+        <label class="f-field">
+          <span>Line</span>
+          <select id="f-line"><option value="all">All lines</option></select>
+        </label>
+        <label class="f-field">
+          <span>Direction</span>
+          <select id="f-dir">
+            <option value="both">Both</option>
+            <option value="in">In</option>
+            <option value="out">Out</option>
+          </select>
+        </label>
+        <fieldset class="f-field f-classes">
+          <legend>Vehicles</legend>
+          <div class="chips" id="f-classes"></div>
+        </fieldset>
+      </form>
+
+      <div class="source-setup" id="remote-setup" hidden>
+        <label class="f-field f-wide">
+          <span>Station data address</span>
+          <input type="url" id="f-remote" placeholder="https://raw.githubusercontent.com/user/repo/data/counts/" />
+        </label>
+        <button class="btn btn-small an-btn" id="f-remote-load" type="button">Load</button>
+        <p class="note">The counting station publishes its hourly counts here. On the station's own web page this is filled in automatically.</p>
+      </div>
+      <input type="file" id="f-csv" accept=".csv,text/csv" hidden />
+
+      <details class="card sessions" id="sessions" hidden>
+        <summary>Counting sessions saved on this device</summary>
+        <ul class="session-list" id="session-list"></ul>
+      </details>
+
+      <p class="an-status" id="status" hidden></p>
+      <p class="empty" id="empty" hidden></p>
+
+      <section class="hero" id="hero" aria-live="polite">
+        <div class="hero-main">
+          <span class="hero-number" id="h-total">0</span>
+          <span class="hero-caption" id="h-caption">vehicles</span>
+        </div>
+        <dl class="figures">
+          <div><dt>Busiest hour</dt><dd id="h-peak">–</dd></div>
+          <div><dt>Per watched hour</dt><dd id="h-rate">–</dd></div>
+          <div><dt>In, out</dt><dd id="h-split">–</dd></div>
+          <div><dt>Time watched</dt><dd id="h-watched">–</dd></div>
+        </dl>
+      </section>
+
+      <section class="card" aria-labelledby="c-hourly-title">
+        <div class="card-head">
+          <h2 id="c-hourly-title">Vehicles by hour</h2>
+          <p class="card-sub" id="c-hourly-sub"></p>
+        </div>
+        <ul class="legend" id="legend-classes"></ul>
+        <div class="chart" id="c-hourly"></div>
+        <p class="strip-note">Grey strip under each hour: how much of it the camera was watched.</p>
+      </section>
+
+      <section class="card" id="card-daily" aria-labelledby="c-daily-title">
+        <div class="card-head">
+          <h2 id="c-daily-title">Vehicles per day</h2>
+          <p class="card-sub" id="c-daily-sub"></p>
+        </div>
+        <div class="chart" id="c-daily"></div>
+      </section>
+
+      <section class="card" id="card-heat" aria-labelledby="c-heat-title">
+        <div class="card-head">
+          <h2 id="c-heat-title">Typical week</h2>
+          <p class="card-sub">Average vehicles per hour, by weekday and hour, over the hours the camera was watched.</p>
+        </div>
+        <div class="chart" id="c-heat"></div>
+        <div class="ramp-legend" id="heat-legend"></div>
+      </section>
+
+      <div class="two-up">
+        <section class="card" aria-labelledby="c-lines-title">
+          <div class="card-head"><h2 id="c-lines-title">By counting line</h2></div>
+          <ul class="legend" id="legend-dirs"></ul>
+          <div class="chart" id="c-lines"></div>
+        </section>
+        <section class="card" aria-labelledby="c-types-title">
+          <div class="card-head"><h2 id="c-types-title">By vehicle type</h2></div>
+          <div class="chart" id="c-types"></div>
+        </section>
+      </div>
+
+      <details class="card table-card">
+        <summary>Table of hourly counts</summary>
+        <div class="table-actions">
+          <button class="btn btn-small an-btn" id="dl-csv" type="button">Download CSV</button>
+        </div>
+        <div class="table-wrap"><table id="table"></table></div>
+      </details>
+    </main>
+  </body>
+</html>
