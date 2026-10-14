@@ -4,7 +4,7 @@
 // On the first visit the page reloads itself once so these headers take effect.
 // Bump VERSION whenever app files change, so installed copies update.
 
-const VERSION = '2.2.1';
+const VERSION = '2.3.0';
 const SHELL_CACHE = `cc-shell-${VERSION}`;
 const ASSET_CACHE = 'cc-assets-v1'; // models + ONNX Runtime; large, kept across app versions
 
@@ -47,7 +47,8 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(SHELL_CACHE)
-      .then((c) => c.addAll(SHELL))
+      // bypass the browser's HTTP cache, or an update could store the previous files again
+      .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting()),
   );
 });

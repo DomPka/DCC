@@ -29,6 +29,7 @@ const els = {
   seek: $('seek'),
   progressTime: $('progress-time'),
   slow: $('slow-warning'),
+  problem: $('frame-warning'),
   chipEngine: $('chip-engine'),
   chipSpeed: $('chip-speed'),
   total: $('total'),
@@ -128,6 +129,10 @@ let drag = null;
 let wakeLock = null;
 let customModel = null; // {name, buffer}
 let recorder = null; // saves this counting run for the analytics page
+let failStreak = 0; // analysis attempts in a row that failed
+let blankStreak = 0; // analysed frames in a row that came through as one flat colour
+let problemKind = null;
+let resumeAfterSeek = false;
 let hls = null;
 
 // ---------------------------------------------------------------- startup
@@ -147,6 +152,13 @@ async function init() {
  *  our service worker adds them, which takes effect after one reload on the first visit. */
 async function ensureCrossOriginIsolation() {
   if (!('serviceWorker' in navigator)) return false;
+  // A newer version took over while this page was open: reload into it, unless the person
+  // has already opened a video or camera (they'd lose it); then it applies on the next visit.
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!source && runner.state !== 'running') location.reload();
+    });
+  }
   try {
     await navigator.serviceWorker.register('./sw.js');
   } catch (err) {
@@ -446,6 +458,10 @@ function stopSource() {
   }
   runner.reset();
   releaseWakeLock();
+  hideProblem();
+  failStreak = 0;
+  blankStreak = 0;
+  resumeAfterSeek = false;
   if (source?.stream) source.stream.getTracks().forEach((t) => t.stop());
   if (source?.url) URL.revokeObjectURL(source.url);
   source = null;
@@ -506,9 +522,21 @@ async function analyse(t) {
     });
   } catch (err) {
     console.error(err);
+    // never let a video play to the end silently while nothing can be analysed
+    if (++failStreak >= 3 && runner.state === 'running') {
+      runner.pause();
+      showProblem(`Counting stopped: this browser couldn't analyse the video. The error was: ${err.message}`);
+    }
     return false;
   }
   if (res.skipped) return false;
+  failStreak = 0;
+  blankStreak = res.blank ? blankStreak + 1 : 0;
+  if (blankStreak === 15) {
+    showProblem('This browser is giving the page only blank pictures from the video, so nothing can be detected. Try opening it in another browser.', 'blank');
+  } else if (blankStreak === 0) {
+    hideProblem('blank');
+  }
   lastAnalysedT = t;
   const tracks = tracker.update(res.dets, t);
   const events = counter.update(tracks, t);
@@ -574,6 +602,9 @@ function onRunClick() {
   }
   if (source.kind === 'file') runner.setMode(settings.mode, Number(settings.fps));
   if (source.kind !== 'file' && !runner.liveStart) setStartDate(nowDigits(), 'Set to when counting started.');
+  failStreak = 0;
+  blankStreak = 0;
+  hideProblem();
   syncCounterLines();
   ensureRecorder();
   runner.start();
@@ -619,7 +650,7 @@ function updateRunButton() {
     label.textContent = st === 'paused' ? 'Resume' : st === 'done' ? 'Count again' : 'Start counting';
     icon.setAttribute('href', '#i-play');
   }
-  els.seek.disabled = st === 'running';
+  els.seek.disabled = source?.kind !== 'file';
   els.source.disabled = st === 'running';
 }
 
@@ -990,14 +1021,40 @@ function bindUi() {
     }
   });
   addEventListener('pagehide', () => recorder?.flush());
-  els.seek.addEventListener('input', async () => {
-    if (runner.state === 'running' || source?.kind !== 'file') return;
+  // The timeline follows the video, and can be dragged at any time. Dragging while counting
+  // pauses, jumps, and carries on counting from the new place when the finger lifts.
+  els.video.addEventListener('timeupdate', () => {
+    if (source?.kind === 'file' && !seekDragging) updateProgress(els.video.currentTime);
+  });
+  let seekDragging = false;
+  const seekTo = async () => {
+    if (source?.kind !== 'file') return;
+    if (runner.state === 'running') {
+      resumeAfterSeek = true;
+      runner.pause();
+    }
     const t = (Number(els.seek.value) / 1000) * (els.video.duration || 0);
+    els.progressTime.textContent = `${fmt(t)} / ${fmt(els.video.duration || 0)}`;
     await seekPreview(t);
-    updateProgress(t);
+    tracker.reset(false); // different place in the video: new tracks, counts kept
+    lastAnalysedT = null;
     lastTracks = [];
     render();
+  };
+  els.seek.addEventListener('pointerdown', () => (seekDragging = true));
+  els.seek.addEventListener('input', () => {
+    seekDragging = true;
+    seekTo();
   });
+  els.seek.addEventListener('change', async () => {
+    await seekTo();
+    seekDragging = false;
+    if (resumeAfterSeek) {
+      resumeAfterSeek = false;
+      if (runner.state === 'paused' && source?.kind === 'file') runner.start();
+    }
+  });
+  addEventListener('pointerup', () => (seekDragging = false));
   els.csvIntervals.addEventListener('click', exportIntervals);
   els.csvEvents.addEventListener('click', exportEvents);
   els.reset.addEventListener('click', () => {
@@ -1037,6 +1094,19 @@ function showLoading(text, frac) {
 }
 function hideLoading() {
   els.loading.hidden = true;
+}
+
+/** A message that stays under the video until the problem is gone or counting restarts. */
+function showProblem(text, kind = 'error') {
+  els.problem.textContent = text;
+  els.problem.hidden = false;
+  problemKind = kind;
+}
+
+function hideProblem(kind) {
+  if (kind && kind !== problemKind) return;
+  els.problem.hidden = true;
+  problemKind = null;
 }
 
 let toastTimer = null;

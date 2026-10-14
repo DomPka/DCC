@@ -1,6 +1,35 @@
 // Main-thread wrapper around the detection worker.
 import { letterbox } from './core/postprocess.js';
 
+// Ways to hand a video frame to the worker, fastest first. Browsers differ in which of
+// these work for which videos (Android's hardware-decoded H.264 is the usual troublemaker):
+// a way that throws, hangs or keeps giving empty (uniform) pictures is dropped for the next.
+const GRABBERS = [
+  {
+    name: 'bitmap',
+    grab: (src, lb) => createImageBitmap(src, { resizeWidth: lb.newW, resizeHeight: lb.newH, resizeQuality: 'low' }),
+  },
+  {
+    name: 'canvas',
+    grab: (src, lb, d) => createImageBitmap(d.drawToCanvas(src, lb)),
+  },
+  {
+    name: 'videoframe',
+    available: () => typeof VideoFrame === 'function',
+    grab: (src) => new VideoFrame(src),
+  },
+  {
+    name: 'pixels',
+    grab: (src, lb, d) => {
+      d.drawToCanvas(src, lb);
+      return d.ctx.getImageData(0, 0, lb.newW, lb.newH).data.buffer;
+    },
+  },
+];
+
+const withTimeout = (p, ms, what) =>
+  Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} took too long`)), ms))]);
+
 export class Detector {
   constructor() {
     this.worker = null;
@@ -8,18 +37,28 @@ export class Detector {
     this.nextId = 1;
     this.info = null;
     this.onProgress = null;
+    this.capture = 0; // index into GRABBERS
+    this.blankRun = 0;
+    this.lastLoad = null;
+    this.fellBack = false;
+  }
+
+  get captureName() {
+    return GRABBERS[this.capture].name;
   }
 
   /**
    * @param {{url?: string, buffer?: ArrayBuffer}} model
-   * @param {{prefer?: 'auto'|'wasm', inputSize?: number}} opts
+   * @param {{prefer?: 'auto'|'wasm', inputSize?: number, threads?: number}} opts
    */
   async load(model, opts = {}) {
     this.dispose();
+    this.lastLoad = model.url ? { model, opts } : null;
+    this.fellBack = false;
     this.worker = new Worker(new URL('./detector.worker.js', import.meta.url), { type: 'module' });
     const vendorUrl = new URL('../vendor/ort/', import.meta.url).href;
     const hc = navigator.hardwareConcurrency || 2;
-    const threads = Math.min(4, hc >= 4 ? hc - 1 : hc);
+    const threads = opts.threads || Math.min(4, hc >= 4 ? hc - 1 : hc);
     const ready = new Promise((resolve, reject) => {
       this.worker.onmessage = (e) => {
         const m = e.data;
@@ -49,27 +88,84 @@ export class Detector {
     const p = this.pending.get(m.id);
     if (!p) return;
     this.pending.delete(m.id);
-    if (m.type === 'error') p.reject(new Error(m.message));
+    if (m.type === 'error') p.reject(Object.assign(new Error(m.message), { where: m.where || 'model' }));
     else p.resolve(m);
   }
 
   /**
    * Detect objects in the current frame of a <video> (or any CanvasImageSource).
-   * @returns {Promise<{dets: Float32Array, timing: object}>}
+   * Falls back to slower ways of reading the frame when the fast one fails on this browser,
+   * and to the single-threaded CPU engine when the model itself fails.
+   * @returns {Promise<{dets: Float32Array, timing: object, blank?: boolean, skipped?: boolean}>}
    */
   async detect(source, srcW, srcH, params) {
     if (!this.worker || !this.info) throw new Error('Model not loaded');
+    for (;;) {
+      let res;
+      try {
+        res = await this.detectOnce(source, srcW, srcH, params);
+      } catch (err) {
+        const was = this.captureName;
+        if (err.where === 'frame' && this.nextCapture()) {
+          console.warn(`Reading video frames as '${was}' failed (${err.message}); trying '${this.captureName}'`);
+          continue;
+        }
+        if (err.where === 'model' && !this.fellBack && this.lastLoad && this.info?.backend !== 'WASM ×1') {
+          // e.g. a GPU or multi-threading problem on this device: retry on one CPU thread
+          console.warn(`Detection failed on ${this.info.backend} (${err.message}); retrying on a single CPU thread`);
+          this.fellBack = true;
+          const { model, opts } = this.lastLoad;
+          const onProgress = this.onProgress; // quiet reload: the model comes from the cache
+          this.onProgress = null;
+          try {
+            await this.load(model, { ...opts, prefer: 'wasm', threads: 1 });
+          } finally {
+            this.onProgress = onProgress;
+          }
+          this.fellBack = true;
+          continue;
+        }
+        throw err;
+      }
+      if (!res.skipped) {
+        const was = this.captureName;
+        if (res.blank && ++this.blankRun >= 3 && this.nextCapture()) {
+          console.warn(`Frames read as '${was}' are empty; trying '${this.captureName}'`);
+          this.blankRun = 0;
+        } else if (!res.blank) this.blankRun = 0;
+      }
+      return res;
+    }
+  }
+
+  nextCapture() {
+    for (let i = this.capture + 1; i < GRABBERS.length; i++) {
+      if (!GRABBERS[i].available || GRABBERS[i].available()) {
+        this.capture = i;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async detectOnce(source, srcW, srcH, params) {
     const [inH, inW] = this.info.fixedSize || [params.inputSize, params.inputSize];
     const lb = letterbox(srcW, srcH, inW, inH);
-    // the browser resizes the frame (usually on the GPU) while making the bitmap
-    const bitmap = await createImageBitmap(source, { resizeWidth: lb.newW, resizeHeight: lb.newH, resizeQuality: 'low' });
+    const g = GRABBERS[this.capture];
+    let frame;
+    try {
+      frame = await withTimeout(Promise.resolve().then(() => g.grab(source, lb, this)), 3000, 'Reading the video frame');
+    } catch (err) {
+      throw Object.assign(err instanceof Error ? err : new Error(String(err)), { where: 'frame' });
+    }
     const id = this.nextId++;
     const done = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
     this.worker.postMessage(
       {
         type: 'detect',
         id,
-        bitmap,
+        frame,
+        frameKind: g.name,
         padX: lb.padX,
         padY: lb.padY,
         newW: lb.newW,
@@ -85,9 +181,23 @@ export class Detector {
         iou: params.iou ?? 0.5,
         agnostic: params.agnostic ?? true,
       },
-      [bitmap],
+      [frame],
     );
     return done;
+  }
+
+  /** Draws the frame, already shrunk to the model's size, on a plain 2D canvas (the most widely supported way). */
+  drawToCanvas(src, lb) {
+    if (!this.canvas) this.canvas = document.createElement('canvas');
+    const c = this.canvas;
+    if (c.width !== lb.newW || c.height !== lb.newH) {
+      c.width = lb.newW;
+      c.height = lb.newH;
+      this.ctx = null;
+    }
+    if (!this.ctx) this.ctx = c.getContext('2d', { willReadFrequently: GRABBERS[this.capture].name === 'pixels' });
+    this.ctx.drawImage(src, 0, 0, lb.newW, lb.newH);
+    return c;
   }
 
   dispose() {

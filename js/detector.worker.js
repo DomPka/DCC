@@ -25,8 +25,8 @@ self.onmessage = async (e) => {
     if (m.type === 'load') await load(m);
     else if (m.type === 'detect') await detect(m);
   } catch (err) {
-    if (m.type === 'detect' && m.bitmap) m.bitmap.close?.();
-    self.postMessage({ type: 'error', id: m.id, stage: m.type, message: String(err?.message || err) });
+    if (m.type === 'detect') m.frame?.close?.();
+    self.postMessage({ type: 'error', id: m.id, stage: m.type, where: err?.where, message: String(err?.message || err) });
   }
 };
 
@@ -114,14 +114,16 @@ async function run(data, h, w) {
 
 async function detect(m) {
   if (busy) {
-    m.bitmap.close?.();
+    m.frame?.close?.();
     self.postMessage({ type: 'result', id: m.id, dets: new Float32Array(0), skipped: true });
     return;
   }
   busy = true;
+  let px;
+  let blank;
+  const [h, w] = fixedSize || [m.inputH, m.inputW];
+  const t0 = performance.now();
   try {
-    const [h, w] = fixedSize || [m.inputH, m.inputW];
-    const t0 = performance.now();
     if (!canvas || canvas.width !== w || canvas.height !== h) {
       canvas = new OffscreenCanvas(w, h);
       ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -129,9 +131,19 @@ async function detect(m) {
     }
     ctx.fillStyle = 'rgb(114,114,114)';
     ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(m.bitmap, m.padX, m.padY, m.newW, m.newH);
-    m.bitmap.close();
-    const px = ctx.getImageData(0, 0, w, h).data;
+    if (m.frameKind === 'pixels') {
+      ctx.putImageData(new ImageData(new Uint8ClampedArray(m.frame), m.newW, m.newH), m.padX, m.padY);
+    } else {
+      ctx.drawImage(m.frame, m.padX, m.padY, m.newW, m.newH);
+      m.frame.close();
+    }
+    px = ctx.getImageData(0, 0, w, h).data;
+    blank = isUniform(px, w, m.padX, m.padY, m.newW, m.newH);
+  } catch (err) {
+    busy = false;
+    throw Object.assign(err instanceof Error ? err : new Error(String(err)), { where: 'frame' });
+  }
+  try {
     const plane = w * h;
     const inv = 1 / 255;
     for (let i = 0, j = 0; i < plane; i++, j += 4) {
@@ -140,7 +152,12 @@ async function detect(m) {
       inputBuf[i + 2 * plane] = px[j + 2] * inv;
     }
     const t1 = performance.now();
-    const out = await run(inputBuf, h, w);
+    let out;
+    try {
+      out = await run(inputBuf, h, w);
+    } catch (err) {
+      throw Object.assign(err instanceof Error ? err : new Error(String(err)), { where: 'model' });
+    }
     const t2 = performance.now();
     const dets = decode(out.data, out.dims, {
       format,
@@ -157,12 +174,30 @@ async function detect(m) {
     });
     const t3 = performance.now();
     self.postMessage(
-      { type: 'result', id: m.id, dets, timing: { pre: t1 - t0, infer: t2 - t1, post: t3 - t2 } },
+      { type: 'result', id: m.id, dets, blank, timing: { pre: t1 - t0, infer: t2 - t1, post: t3 - t2 } },
       [dets.buffer],
     );
   } finally {
     busy = false;
   }
+}
+
+/** True when the picture area is one flat colour: what a browser hands over when it can't read the frame. */
+function isUniform(px, stride, x0, y0, w, h) {
+  let lo = 765;
+  let hi = 0;
+  const sx = Math.max(1, Math.floor(w / 40));
+  const sy = Math.max(1, Math.floor(h / 40));
+  for (let y = y0; y < y0 + h; y += sy) {
+    for (let x = x0; x < x0 + w; x += sx) {
+      const j = (y * stride + x) * 4;
+      const v = px[j] + px[j + 1] + px[j + 2];
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    if (hi - lo > 12) return false;
+  }
+  return true;
 }
 
 async function fetchWithProgress(url) {
