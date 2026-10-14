@@ -179,6 +179,14 @@ a {
 .app-nav a:hover {
   background: var(--asphalt-2);
 }
+.stream-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--marking);
+  color: #1c1600;
+  font-size: 0.92rem;
+}
 .sheet .field input {
   min-height: 44px;
   padding: 0 10px;

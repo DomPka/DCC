@@ -240,7 +240,8 @@
           <span>Stream link (.m3u8 or .mp4)</span>
           <input type="url" id="stream-url" placeholder="https://…/playlist.m3u8" required />
         </label>
-        <p class="field-note">Works when the stream's server allows other websites to read it. Many news and TV sites don't; for those, use the counting station, which can read any stream.</p>
+        <p class="stream-error" id="stream-error" role="alert" hidden></p>
+        <p class="field-note">Paste the video stream itself, not the web page that shows it. It works when the stream's server lets other websites read it; YouTube and most news sites don't, and for those the counting station can count instead.</p>
         <button class="btn btn-solid" value="open" type="submit">Open stream</button>
         <button class="btn btn-quiet" value="cancel" type="submit" formnovalidate>Cancel</button>
       </form>

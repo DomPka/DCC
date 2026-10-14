@@ -320,64 +320,123 @@ function nowDigits() {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()));
 }
 
+const STREAM_HELP = {
+  youtube:
+    "YouTube doesn't let web pages read its video, so this counter can't analyse YouTube links. The counting station can: put this link in its config as stream.url.",
+  page:
+    'This is a web page, not a video stream. Paste the stream link itself, usually ending in .m3u8. On a computer: open the page, press F12, open Network, type m3u8 in the filter, play the video, and copy that link.',
+  blocked: "This stream's server doesn't let other websites read it, so it can't be analysed here. The counting station can count it: put the link in its config.",
+  notfound: 'Nothing was found at that link. Check that it is complete, or copy it again.',
+  expired: 'The server refused the link. Stream links with a token often expire after a while; copy a fresh one.',
+  timeout: "The stream didn't start within 15 seconds. Check that it's live, then try again.",
+  unclear:
+    "This doesn't look like a video stream link (those usually end in .m3u8), and its server didn't let the page check. If it's a web page with a video player, paste the stream link itself: on a computer, open the page, press F12, open Network, type m3u8 in the filter, play the video, and copy that link.",
+};
+
+function streamKind(u) {
+  if (/(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i.test(u.hostname)) return 'youtube';
+  if (/\.m3u8$/i.test(u.pathname) || /m3u8/i.test(u.search)) return 'hls';
+  if (/\.(mp4|webm|mov|m4v|mkv|ts)$/i.test(u.pathname)) return 'file';
+  return 'unknown';
+}
+
+/** For links without a telling extension: ask the server what it is (needs CORS). */
+async function sniffStream(url) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(url, { mode: 'cors', signal: ctl.signal });
+    const type = (r.headers.get('content-type') || '').toLowerCase();
+    ctl.abort(); // headers are enough
+    if (r.status === 404) return 'notfound';
+    if (r.status === 401 || r.status === 403) return 'expired';
+    if (type.includes('mpegurl')) return 'hls';
+    if (type.startsWith('video/')) return 'file';
+    return 'page';
+  } catch {
+    return 'unclear';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function streamFailed(kind, url) {
+  stopSource();
+  els.empty.hidden = false;
+  els.stage.classList.add('is-empty');
+  els.transport.hidden = true;
+  hideLoading();
+  askStream(url, STREAM_HELP[kind] || STREAM_HELP.blocked);
+}
+
 async function openStream(url) {
   if (!url) return;
-  stopSource();
-  let host = url;
+  let u;
   try {
-    host = new URL(url).hostname;
+    u = new URL(url);
   } catch {
-    toast('That is not a valid link.');
+    askStream(url, 'That is not a complete link. It should start with https://');
     return;
   }
-  source = { kind: 'stream', name: host, url };
+  let kind = streamKind(u);
+  if (kind === 'youtube') return askStream(url, STREAM_HELP.youtube);
+  stopSource();
+  showLoading('Connecting to the stream…', 0);
+  if (kind === 'unknown') {
+    kind = await sniffStream(url);
+    if (kind !== 'hls' && kind !== 'file') return streamFailed(kind, url);
+  }
+  source = { kind: 'stream', name: u.hostname, url };
   const v = els.video;
   v.srcObject = null;
   v.crossOrigin = 'anonymous';
   v.muted = true;
-  const isHls = /\.m3u8(\?|$)/i.test(url);
+  let started = false;
   try {
-    if (isHls && !v.canPlayType('application/vnd.apple.mpegurl')) {
-      const { default: Hls } = await import('../vendor/hls/hls.light.min.mjs');
-      if (!Hls.isSupported()) throw new Error('this browser cannot play HLS streams');
-      hls = new Hls({ liveSyncDurationCount: 3, lowLatencyMode: false });
-      let fatalCount = 0;
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (!data.fatal) return;
-        fatalCount++;
-        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && fatalCount < 5) hls.recoverMediaError();
-        else if (fatalCount < 1000) setTimeout(() => hls?.loadSource(url), Math.min(60, 5 * fatalCount) * 1000); // keep trying: streams drop
-      });
-      hls.loadSource(url);
-      hls.attachMedia(v);
-    } else {
-      v.src = url;
-    }
+    const failed = new Promise((_, reject) => {
+      v.addEventListener('error', () => !started && reject(Object.assign(new Error('media error'), { kind: 'blocked' })), { once: true });
+      if (kind === 'hls' && !v.canPlayType('application/vnd.apple.mpegurl')) {
+        import('../vendor/hls/hls.light.min.mjs').then(({ default: Hls }) => {
+          if (!Hls.isSupported()) return reject(Object.assign(new Error('no HLS'), { kind: 'blocked' }));
+          hls = new Hls({ liveSyncDurationCount: 3, lowLatencyMode: false });
+          let fatalCount = 0;
+          hls.on(Hls.Events.ERROR, (_e, data) => {
+            if (!data.fatal) return;
+            if (!started) {
+              const code = data.response?.code;
+              reject(Object.assign(new Error(data.details), { kind: code === 404 ? 'notfound' : code === 401 || code === 403 ? 'expired' : 'blocked' }));
+              return;
+            }
+            fatalCount++; // streams drop: keep trying
+            if (data.type === Hls.ErrorTypes.MEDIA_ERROR && fatalCount < 5) hls.recoverMediaError();
+            else setTimeout(() => hls?.loadSource(url), Math.min(60, 5 * fatalCount) * 1000);
+          });
+          hls.loadSource(url);
+          hls.attachMedia(v);
+        }, reject);
+      } else {
+        v.src = url;
+      }
+    });
     v.play().catch(() => {}); // may stay pending until data arrives, so don't wait on it
-    if (!v.videoWidth) await once(v, 'loadeddata', 20000);
+    if (!v.videoWidth) await Promise.race([once(v, 'loadeddata', 15000), failed]);
+    started = true;
     // make sure the browser lets us read the pixels (the server must allow cross-origin use)
     const probe = new OffscreenCanvas(8, 8).getContext('2d');
     probe.drawImage(v, 0, 0, 8, 8);
     probe.getImageData(0, 0, 1, 1);
   } catch (err) {
-    stopSource();
-    els.empty.hidden = false;
-    els.stage.classList.add('is-empty');
-    els.transport.hidden = true;
-    toast(
-      err?.name === 'SecurityError' || /timeout|network|manifest/i.test(String(err?.message))
-        ? "This stream's server doesn't let other websites analyse it. Use the counting station for this camera."
-        : `The stream could not be opened: ${err.message}`,
-    );
-    return;
+    return streamFailed(err?.kind || (/timeout/.test(String(err?.message)) ? 'timeout' : 'blocked'), url);
   }
+  hideLoading();
   afterSourceReady();
   runner.setMode('live', 30);
   els.progress.hidden = true;
   setStartDate(null, 'Set automatically when counting starts.');
-  // keep counting through stalls: the live runner simply waits for new frames
+  // keep counting through stalls
   v.addEventListener('pause', () => runner.state === 'running' && source?.kind === 'stream' && v.play().catch(() => {}));
 }
+
 
 function stopSource() {
   closeRecorder();
@@ -921,7 +980,7 @@ function bindUi() {
     else if (els.sheet.returnValue === 'file') els.fileInput.click();
     else if (els.sheet.returnValue === 'stream') askStream();
   });
-  $('btn-stream-empty').addEventListener('click', askStream);
+  $('btn-stream-empty').addEventListener('click', () => askStream());
   const streamSheet = $('stream-sheet');
   streamSheet.addEventListener('close', () => {
     if (streamSheet.returnValue === 'open') {
@@ -959,9 +1018,13 @@ function bindUi() {
   });
 }
 
-function askStream() {
+function askStream(url, problem) {
   const d = $('stream-sheet');
-  $('stream-url').value = store.get('cc.stream', '') || '';
+  $('stream-url').value = typeof url === 'string' ? url : store.get('cc.stream', '') || '';
+  const err = $('stream-error');
+  err.hidden = !problem;
+  err.textContent = problem || '';
+  if (d.open) return;
   if (d.showModal) d.showModal();
   else openStream(prompt('Stream link (.m3u8 or .mp4)') || '');
 }
