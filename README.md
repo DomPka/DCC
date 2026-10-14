@@ -1,6 +1,6 @@
-# Car Counter 2
+# DCC: Drone Car Counter
 
-Count vehicles crossing lines in drone or camera video, **live on a phone**, **from a video file** or **from an internet camera 24/7**, and see the results by hour, day and weekday.
+Drone car counter based on YOLO computer vision. Count vehicles crossing lines in drone or camera video, **live on a phone**, **from a video file** or **from an internet camera 24/7**, and see the results by hour, day and weekday.
 
 - **Counter** (`index.html`): runs entirely in the browser, on a phone or computer. Nothing to install; video never leaves the device.
 - **Counting station** (`station/`): a small always-on program for a lab PC, Raspberry Pi or server that counts a live camera stream around the clock.
@@ -8,7 +8,7 @@ Count vehicles crossing lines in drone or camera video, **live on a phone**, **f
 
 Made by [DomPka](https://github.com/DomPka) (Dominykas Petrulaitis), Aeronautics Laboratory, Antanas Gustaitis' Aviation Institute, VILNIUS TECH.
 
-**Open the app:** `https://dompka.github.io/<repository-name>/` (after enabling GitHub Pages, see below). On a phone, use *Install as app* (Android) or *Share → Add to Home Screen* (iPhone) and it opens full-screen and works offline.
+**Open the app:** [dompka.github.io/DCC](https://dompka.github.io/DCC/) (analytics: [dompka.github.io/DCC/analytics.html](https://dompka.github.io/DCC/analytics.html)). On a phone, use *Install as app* (Android) or *Share → Add to Home Screen* (iPhone) and it opens full-screen and works offline.
 
 ## What it does
 
@@ -38,7 +38,7 @@ Open `http://<station address>:8090/` on any phone or computer in the same netwo
 
 **Stream address.** `stream.url` can be an HLS link (`.m3u8`), RTSP, an HTTP MP4/MJPEG stream, or a web page that `yt-dlp` understands. For a news-site camera such as Delfi's *Tiesiogiai iš Geležinio vilko g.*: open the page in desktop Chrome, F12 → Network, filter `m3u8`, start the video, and copy the `.m3u8` link. If that link stops working after a few hours (expiring token), set `stream.urlCommand` to a command that prints a fresh link; the station runs it on every reconnect. Check the camera owner's terms; the station only stores counts, never images.
 
-**See the counts from anywhere (GitHub Pages).** Add a `publish` block to the config with your repository and a fine-grained GitHub token (Contents: read and write, this repository only) in the `GITHUB_TOKEN` environment variable. Every 10 minutes the station writes the hourly counts to the `data` branch (always a single commit, so the repository doesn't grow), and `https://<user>.github.io/<repository>/analytics.html` reads them automatically.
+**See the counts from anywhere (GitHub Pages).** Add a `publish` block to the config with your repository and a fine-grained GitHub token (Contents: read and write, this repository only) in the `GITHUB_TOKEN` environment variable. Every 10 minutes the station writes the hourly counts to the `data` branch (always a single commit, so the repository doesn't grow), and `https://dompka.github.io/DCC/analytics.html` reads them automatically.
 
 **Keep it running.** Linux/Raspberry Pi: `station/car-counter-station.service` (systemd, restarts on failure and at boot). Docker: `station/Dockerfile`. Windows: Task Scheduler, "At startup", `node station.mjs config.json`. Measured on a 2.8 GHz server core: about 85 ms per frame with YOLO26n at 640 px, so the default 10 analysed frames per second fit on one core; on slower boards lower `stream.fps` (10 or more keeps counts within a few percent, see the accuracy table).
 

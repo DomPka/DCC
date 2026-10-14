@@ -14,7 +14,7 @@
   "dataDir": "./data",
   "http": { "port": 8090, "host": "0.0.0.0", "adminPassword": "change-me" },
   "publish": {
-    "repo": "DomPka/car-counter",
+    "repo": "DomPka/DCC",
     "branch": "data",
     "folder": "counts",
     "tokenEnv": "GITHUB_TOKEN",
