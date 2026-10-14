@@ -505,6 +505,13 @@ function setStartDate(date, note) {
   els.set.startNote.textContent = note;
 }
 
+// Firefox for Android can't give web pages the picture of most videos (H.264, VP9): it keeps
+// them on the GPU as SurfaceTextures (Mozilla bug 1526207, open since 2019). Every way of
+// reading frames comes back blank or refused there, so say so plainly.
+const FIREFOX_ANDROID = /Android/i.test(navigator.userAgent) && /Firefox\//.test(navigator.userAgent);
+const FIREFOX_ANDROID_HELP =
+  "Firefox for Android can't give web pages the picture from this video (a known Firefox bug), so nothing can be detected here. Open this page in Chrome on this device to count it.";
+
 // ---------------------------------------------------------------- analysis
 async function analyse(t) {
   if (!modelReady || !els.video.videoWidth) return false;
@@ -529,7 +536,11 @@ async function analyse(t) {
     if (++failStreak >= 3 && runner.state === 'running') {
       runner.pause();
       const how = err.where === 'frame' && detector.captureLog ? ` Tried: ${detector.captureLog}.` : '';
-      showProblem(`Counting stopped: this browser couldn't analyse the video. The error was: ${err.message}.${how}`);
+      showProblem(
+        err.where === 'frame' && FIREFOX_ANDROID
+          ? FIREFOX_ANDROID_HELP
+          : `Counting stopped: this browser couldn't analyse the video. The error was: ${err.message}.${how}`,
+      );
     }
     return false;
   }
@@ -537,7 +548,13 @@ async function analyse(t) {
   failStreak = 0;
   blankStreak = res.blank ? blankStreak + 1 : 0;
   if (blankStreak === 15) {
-    showProblem(`This browser is giving the page only blank pictures from the video, so nothing can be detected. Try opening it in another browser. Tried: ${detector.captureLog || detector.captureName}.`, 'blank');
+    if (FIREFOX_ANDROID) {
+      // every way of reading the picture has been tried: don't play the rest for nothing
+      if (runner.state === 'running') runner.pause();
+      showProblem(FIREFOX_ANDROID_HELP, 'blank');
+    } else {
+      showProblem(`This browser is giving the page only blank pictures from the video, so nothing can be detected. Try opening it in another browser. Tried: ${detector.captureLog || detector.captureName}.`, 'blank');
+    }
   } else if (blankStreak === 0) {
     hideProblem('blank');
   }
