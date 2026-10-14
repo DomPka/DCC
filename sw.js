@@ -4,7 +4,7 @@
 // On the first visit the page reloads itself once so these headers take effect.
 // Bump VERSION whenever app files change, so installed copies update.
 
-const VERSION = '2.3.1';
+const VERSION = '2.3.2';
 const SHELL_CACHE = `cc-shell-${VERSION}`;
 const ASSET_CACHE = 'cc-assets-v1'; // models + ONNX Runtime; large, kept across app versions
 

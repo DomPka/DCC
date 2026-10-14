@@ -528,8 +528,8 @@ async function analyse(t) {
     // never let a video play to the end silently while nothing can be analysed
     if (++failStreak >= 3 && runner.state === 'running') {
       runner.pause();
-      const how = err.where === 'frame' ? ` (last tried: ${detector.captureName})` : '';
-      showProblem(`Counting stopped: this browser couldn't analyse the video. The error was: ${err.message}${how}`);
+      const how = err.where === 'frame' && detector.captureLog ? ` Tried: ${detector.captureLog}.` : '';
+      showProblem(`Counting stopped: this browser couldn't analyse the video. The error was: ${err.message}.${how}`);
     }
     return false;
   }
@@ -537,7 +537,7 @@ async function analyse(t) {
   failStreak = 0;
   blankStreak = res.blank ? blankStreak + 1 : 0;
   if (blankStreak === 15) {
-    showProblem('This browser is giving the page only blank pictures from the video, so nothing can be detected. Try opening it in another browser.', 'blank');
+    showProblem(`This browser is giving the page only blank pictures from the video, so nothing can be detected. Try opening it in another browser. Tried: ${detector.captureLog || detector.captureName}.`, 'blank');
   } else if (blankStreak === 0) {
     hideProblem('blank');
   }
