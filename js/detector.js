@@ -2,21 +2,24 @@
 import { letterbox } from './core/postprocess.js';
 
 // Ways to hand a video frame to the worker, fastest first. Browsers differ in which of
-// these work for which videos (Android's hardware-decoded H.264 is the usual troublemaker):
-// a way that throws, hangs or keeps giving empty (uniform) pictures is dropped for the next.
+// these work for which videos: a way that throws, hangs, can't be sent to the worker or
+// keeps giving empty (uniform) pictures is dropped for the next.
+// Example: Firefox for Android marks pictures taken from a local video file as
+// "cross-origin", so they can't be sent to the worker; a VideoFrame of a video loaded in
+// CORS mode is exempt from that check (see app.js, openFile).
 const GRABBERS = [
   {
     name: 'bitmap',
     grab: (src, lb) => createImageBitmap(src, { resizeWidth: lb.newW, resizeHeight: lb.newH, resizeQuality: 'low' }),
   },
   {
-    name: 'canvas',
-    grab: (src, lb, d) => createImageBitmap(d.drawToCanvas(src, lb)),
-  },
-  {
     name: 'videoframe',
     available: () => typeof VideoFrame === 'function',
     grab: (src) => new VideoFrame(src),
+  },
+  {
+    name: 'canvas',
+    grab: (src, lb, d) => createImageBitmap(d.drawToCanvas(src, lb)),
   },
   {
     name: 'pixels',
@@ -159,31 +162,34 @@ export class Detector {
       throw Object.assign(err instanceof Error ? err : new Error(String(err)), { where: 'frame' });
     }
     const id = this.nextId++;
-    const done = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
-    this.worker.postMessage(
-      {
-        type: 'detect',
-        id,
-        frame,
-        frameKind: g.name,
-        padX: lb.padX,
-        padY: lb.padY,
-        newW: lb.newW,
-        newH: lb.newH,
-        inputW: inW,
-        inputH: inH,
-        scaleX: lb.scaleX,
-        scaleY: lb.scaleY,
-        srcW,
-        srcH,
-        conf: params.conf,
-        classes: params.classes,
-        iou: params.iou ?? 0.5,
-        agnostic: params.agnostic ?? true,
-      },
-      [frame],
-    );
-    return done;
+    const msg = {
+      type: 'detect',
+      id,
+      frame,
+      frameKind: g.name,
+      padX: lb.padX,
+      padY: lb.padY,
+      newW: lb.newW,
+      newH: lb.newH,
+      inputW: inW,
+      inputH: inH,
+      scaleX: lb.scaleX,
+      scaleY: lb.scaleY,
+      srcW,
+      srcH,
+      conf: params.conf,
+      classes: params.classes,
+      iou: params.iou ?? 0.5,
+      agnostic: params.agnostic ?? true,
+    };
+    try {
+      // fails when the browser considers the picture cross-origin ("write-only")
+      this.worker.postMessage(msg, [frame]);
+    } catch (err) {
+      frame.close?.();
+      throw Object.assign(new Error(`The picture can't be sent to the detector (${err.message})`), { where: 'frame' });
+    }
+    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
   }
 
   /** Draws the frame, already shrunk to the model's size, on a plain 2D canvas (the most widely supported way). */

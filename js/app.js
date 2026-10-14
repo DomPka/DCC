@@ -277,6 +277,9 @@ async function openFile(file) {
   source = { kind: 'file', name: file.name, url, key: `file:${file.name}:${file.size}` };
   const v = els.video;
   v.srcObject = null;
+  // CORS mode for our own blob URL changes nothing in loading, but it lets browsers that
+  // misjudge a local file's origin (Firefox for Android) still hand its frames to the detector
+  v.crossOrigin = 'anonymous';
   v.src = url;
   v.muted = true;
   try {
@@ -525,7 +528,8 @@ async function analyse(t) {
     // never let a video play to the end silently while nothing can be analysed
     if (++failStreak >= 3 && runner.state === 'running') {
       runner.pause();
-      showProblem(`Counting stopped: this browser couldn't analyse the video. The error was: ${err.message}`);
+      const how = err.where === 'frame' ? ` (last tried: ${detector.captureName})` : '';
+      showProblem(`Counting stopped: this browser couldn't analyse the video. The error was: ${err.message}${how}`);
     }
     return false;
   }
