@@ -488,3 +488,25 @@
 .session-list small {
   color: var(--muted);
 }
+
+/* ---------- analytics as a section of the counter / station page ---------- */
+.an-section {
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  scroll-margin-top: 0;
+}
+.an-head {
+  margin: 8px 0 16px;
+}
+.an-title {
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.an-lead {
+  margin: 4px 0 0;
+  color: var(--muted);
+  max-width: 60ch;
+}

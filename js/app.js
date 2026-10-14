@@ -526,7 +526,7 @@ runner.onState = (state) => {
   if (state === 'running') requestWakeLock();
   else releaseWakeLock();
   if (state === 'done') {
-    toast('Finished. Download the CSV files below.');
+    toast('Finished. The CSV downloads are next to the counts, and Analytics shows the result by hour.');
     updateProgress(els.video.duration || 0);
   }
 };

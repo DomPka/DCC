@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="css/app.css" />
     <link rel="stylesheet" href="css/analytics.css" />
     <script type="module" src="js/station-page.js"></script>
+    <script type="module" src="js/analytics.js"></script>
   </head>
   <body class="viz-root">
     <header class="topbar">
@@ -17,7 +18,7 @@
         <span id="st-name">Counting station</span>
       </a>
       <nav class="topnav">
-        <a href="analytics.html">Analytics</a>
+        <a href="#analytics">Analytics</a>
         <a href="./index.html">Counter</a>
       </nav>
     </header>
@@ -58,11 +59,14 @@
         <p class="empty-note" id="lines-empty">No counting lines yet. Tap Add line, then tap two points across the road on the camera picture, and Save lines.</p>
         <p class="empty-note" id="publish-note" hidden></p>
         <footer class="about">
-          <p>Counts shown next to each line are since the station last started. Full history is on the Analytics page.</p>
+          <p>Counts shown next to each line are since the station last started. The full history is in Analytics below.</p>
           <p>Car Counter 2 by DomPka, Aeronautics Laboratory, VILNIUS TECH.</p>
         </footer>
       </aside>
     </main>
+
+    <section id="analytics" class="viz-root an-section" aria-label="Traffic analytics"></section>
+
     <div class="toast" id="toast" role="status" hidden></div>
   </body>
 </html>

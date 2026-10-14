@@ -4,7 +4,7 @@
 // On the first visit the page reloads itself once so these headers take effect.
 // Bump VERSION whenever app files change, so installed copies update.
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const SHELL_CACHE = `cc-shell-${VERSION}`;
 const ASSET_CACHE = 'cc-assets-v1'; // models + ONNX Runtime; large, kept across app versions
 
@@ -18,6 +18,7 @@ const SHELL = [
   'css/analytics.css',
   'js/app.js',
   'js/analytics.js',
+  'js/analytics-view.js',
   'js/charts.js',
   'js/sessions.js',
   'js/station-page.js',

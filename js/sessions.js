@@ -105,6 +105,7 @@ export class SessionRecorder {
     this.dirty = false;
     this.s.updated = new Date().toISOString();
     await saveSession(this.s);
+    self.dispatchEvent?.(new CustomEvent('cc:counts-changed'));
   }
 
   close() {

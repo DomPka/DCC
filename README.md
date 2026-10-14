@@ -4,11 +4,11 @@ Drone car counter based on YOLO computer vision. Count vehicles crossing lines i
 
 - **Counter** (`index.html`): runs entirely in the browser, on a phone or computer. Nothing to install; video never leaves the device.
 - **Counting station** (`station/`): a small always-on program for a lab PC, Raspberry Pi or server that counts a live camera stream around the clock.
-- **Analytics** (`analytics.html`): hourly, daily and weekday-by-hour charts, busiest hours, per line, direction and vehicle type, CSV export.
+- **Analytics**, on the same page below the counter (and on the station's page): hourly, daily and weekday-by-hour charts, busiest hours, per line, direction and vehicle type, CSV export.
 
 Made by [DomPka](https://github.com/DomPka) (Dominykas Petrulaitis), Aeronautics Laboratory, Antanas Gustaitis' Aviation Institute, VILNIUS TECH.
 
-**Open the app:** [dompka.github.io/DCC](https://dompka.github.io/DCC/) (analytics: [dompka.github.io/DCC/analytics.html](https://dompka.github.io/DCC/analytics.html)). On a phone, use *Install as app* (Android) or *Share → Add to Home Screen* (iPhone) and it opens full-screen and works offline.
+**Open the app:** [dompka.github.io/DCC](https://dompka.github.io/DCC/) (analytics are further down the same page, or tap *Analytics* in the top bar). On a phone, use *Install as app* (Android) or *Share → Add to Home Screen* (iPhone) and it opens full-screen and works offline.
 
 ## What it does
 
@@ -34,11 +34,11 @@ cp config.example.json config.json    # set name, stream.url, timezone, password
 node station.mjs config.json
 ```
 
-Open `http://<station address>:8090/` on any phone or computer in the same network: you see the live camera picture with tracked vehicles. Tap **Add line**, tap two points across the road, **Save lines** (asks for the `adminPassword` from the config). Counting on that line starts immediately. The **Analytics** link on that page shows the station's full history.
+Open `http://<station address>:8090/` on any phone or computer in the same network: you see the live camera picture with tracked vehicles. Tap **Add line**, tap two points across the road, **Save lines** (asks for the `adminPassword` from the config). Counting on that line starts immediately. The **Analytics** section further down that page shows the station's full history.
 
 **Stream address.** `stream.url` can be an HLS link (`.m3u8`), RTSP, an HTTP MP4/MJPEG stream, or a web page that `yt-dlp` understands. For a news-site camera such as Delfi's *Tiesiogiai iš Geležinio vilko g.*: open the page in desktop Chrome, F12 → Network, filter `m3u8`, start the video, and copy the `.m3u8` link. If that link stops working after a few hours (expiring token), set `stream.urlCommand` to a command that prints a fresh link; the station runs it on every reconnect. Check the camera owner's terms; the station only stores counts, never images.
 
-**See the counts from anywhere (GitHub Pages).** Add a `publish` block to the config with your repository and a fine-grained GitHub token (Contents: read and write, this repository only) in the `GITHUB_TOKEN` environment variable. Every 10 minutes the station writes the hourly counts to the `data` branch (always a single commit, so the repository doesn't grow), and `https://dompka.github.io/DCC/analytics.html` reads them automatically.
+**See the counts from anywhere (GitHub Pages).** Add a `publish` block to the config with your repository and a fine-grained GitHub token (Contents: read and write, this repository only) in the `GITHUB_TOKEN` environment variable. Every 10 minutes the station writes the hourly counts to the `data` branch (always a single commit, so the repository doesn't grow), and the analytics on `https://dompka.github.io/DCC/` read them automatically.
 
 **Keep it running.** Linux/Raspberry Pi: `station/car-counter-station.service` (systemd, restarts on failure and at boot). Docker: `station/Dockerfile`. Windows: Task Scheduler, "At startup", `node station.mjs config.json`. Measured on a 2.8 GHz server core: about 85 ms per frame with YOLO26n at 640 px, so the default 10 analysed frames per second fit on one core; on slower boards lower `stream.fps` (10 or more keeps counts within a few percent, see the accuracy table).
 
@@ -46,7 +46,7 @@ Data on disk (`station/data/`): `days/YYYY-MM-DD.json` hourly counts per line, d
 
 ## Analytics
 
-`analytics.html` shows, for any period (today, yesterday, last 7 or 30 days, everything, or chosen dates) and any line, direction and vehicle types:
+The **Analytics** section (below the counter, and below the live picture on the station's page) shows, for any period (today, yesterday, last 7 or 30 days, everything, or chosen dates) and any line, direction and vehicle types:
 
 - total vehicles, busiest hour, vehicles per watched hour, in/out split, and how much of the time the camera was watched;
 - vehicles by hour of the day (one day, or the average day over the period);
@@ -118,7 +118,7 @@ Any detection model exported to ONNX works: YOLOv8/9/11/26 (Ultralytics export),
 ```bash
 node tools/serve.mjs 8080      # http://localhost:8080 (camera works on localhost)
 npm test                       # tracker, counter, assignment, decoding, CSV, station storage tests
-node tools/make-demo-data.mjs demo 28   # 4 weeks of sample data: analytics.html?data=<url>/demo/
+node tools/make-demo-data.mjs demo 28   # 4 weeks of sample data: open ./?data=<url>/demo/#analytics
 ```
 
 Benchmark against v1 (needs the v1 repository checked out, plus `pip install filterpy scipy numpy`):
@@ -134,7 +134,7 @@ End-to-end browser test (Playwright): `python3 tests/e2e/run_e2e.py --video clip
 
 ```
 index.html, css/app.css      the counter app (no build step, plain ES modules)
-analytics.html               analytics page (js/analytics.js, js/charts.js, css/analytics.css)
+js/analytics*.js, charts.js   analytics section shown on the counter and station pages
 station.html                 station page: live picture + line setup (js/station-page.js)
 station/                     always-on counting station (Node.js, FFmpeg, ONNX Runtime)
 js/app.js                    UI, sources (camera, file, stream link), line editing, CSV export

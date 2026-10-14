@@ -1,10 +1,13 @@
 // Traffic analytics: hourly, daily and weekday patterns from the counting station's
 // published data, from counts made in this browser, or from an exported CSV.
+// Mounted as a section (#analytics) of the counter page and the station page.
 import { DayBins, weekday, addDays, wallParts } from './core/countdata.js';
+import { ANALYTICS_HTML } from './analytics-view.js';
 import { listSessions, sessionDays, deleteSession } from './sessions.js';
 import { columnChart, barList, heatmap, compact, hideTip } from './charts.js';
 
-const $ = (id) => document.getElementById(id);
+const root = document.getElementById('analytics');
+const $ = (id) => document.getElementById(`an-${id}`);
 const store = {
   get: (k) => {
     try {
@@ -38,7 +41,36 @@ const state = {
   refreshTimer: null,
 };
 
-init();
+if (root) mount();
+
+function mount() {
+  root.innerHTML = ANALYTICS_HTML;
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    init();
+  };
+  // load the data only when the section comes near the screen, so counting isn't slowed
+  if (location.hash === '#analytics' || !('IntersectionObserver' in self)) start();
+  else {
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        io.disconnect();
+        start();
+      }
+    }, { rootMargin: '600px 0px' });
+    io.observe(root);
+  }
+  addEventListener('hashchange', () => location.hash === '#analytics' && start());
+  // new counts saved on this device: refresh when showing this device's data
+  let refreshTimer = null;
+  addEventListener('cc:counts-changed', () => {
+    if (!started || state.source?.kind !== 'device') return;
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => loadDevice(true), 1500);
+  });
+}
 
 async function init() {
   bindFilters();
@@ -47,10 +79,16 @@ async function init() {
     $('f-source').value = 'device';
     return loadDevice();
   }
-  const remote = params.get('data') || (await stationDataUrl()) || store.get('cc.remote') || githubPagesGuess();
+  const explicit = params.get('data');
+  const remote = explicit || (await stationDataUrl()) || store.get('cc.remote') || githubPagesGuess();
   if (remote) {
     $('f-remote').value = remote;
-    await loadRemote(remote);
+    const ok = await loadRemote(remote, { quiet: !explicit });
+    if (!ok) {
+      // no station data published (yet): show the counts made on this device instead
+      $('f-source').value = 'device';
+      await loadDevice();
+    }
   } else {
     $('f-source').value = 'device';
     await loadDevice();
@@ -61,7 +99,6 @@ async function stationDataUrl() {
   try {
     const r = await fetch('data/index.json', { cache: 'no-store' });
     if (r.ok && (r.headers.get('content-type') || '').includes('json')) {
-      $('nav-station').hidden = false;
       return new URL('data/', location.href).href;
     }
   } catch {
@@ -79,7 +116,7 @@ function githubPagesGuess() {
 }
 
 // ------------------------------------------------------------------ sources
-async function loadRemote(base) {
+async function loadRemote(base, { quiet = false } = {}) {
   base = base.endsWith('/') ? base : `${base}/`;
   $('sessions').hidden = true;
   setLoading(true);
@@ -105,11 +142,14 @@ async function loadRemote(base) {
     afterLoad();
     clearInterval(state.refreshTimer);
     state.refreshTimer = setInterval(refreshRemote, 60000);
+    return true;
   } catch (err) {
     setLoading(false);
+    if (quiet) return false;
     $('f-source').value = 'remote';
     $('remote-setup').hidden = false;
     showEmpty(`Could not load station data from that address (${err.message}). Check the address, or choose another data source.`);
+    return false;
   }
 }
 
@@ -128,7 +168,7 @@ async function refreshRemote() {
   }
 }
 
-async function loadDevice() {
+async function loadDevice(keepFilters = false) {
   clearInterval(state.refreshTimer);
   setLoading(true);
   const sessions = await listSessions();
@@ -159,6 +199,7 @@ async function loadDevice() {
     }
   }
   drawSessions(sessions);
+  state.keepFilters = keepFilters && state.source?.kind === 'device';
   useLocal('device', merged, classes, lines, undated ? `${undated} counting session${undated > 1 ? 's have' : ' has'} no recording time and ${undated > 1 ? 'are' : 'is'} not shown. Set "Recording started at" in the counter to include ${undated > 1 ? 'them' : 'it'}.` : '');
 }
 
@@ -200,7 +241,8 @@ function useLocal(kind, daysMap, classes, lines, note) {
     getDay: async (date) => daysMap.get(date) || null,
   };
   $('remote-setup').hidden = true;
-  afterLoad();
+  afterLoad(state.keepFilters);
+  state.keepFilters = false;
 }
 
 function parseCsv(text) {
@@ -274,6 +316,7 @@ async function loadCsv(file) {
 
 // ------------------------------------------------------------------ filters
 function bindFilters() {
+  $('filters').addEventListener('submit', (e) => e.preventDefault());
   $('f-source').addEventListener('change', async () => {
     const v = $('f-source').value;
     if (v === 'remote') {
@@ -379,10 +422,10 @@ function slotOf(name) {
 function colorOf(name) {
   const slot = slotOf(name);
   if (slot > 8) return '#8a96a0';
-  return getComputedStyle(document.body).getPropertyValue(`--series-${slot}`).trim() || '#2a78d6';
+  return getComputedStyle(root).getPropertyValue(`--series-${slot}`).trim() || '#2a78d6';
 }
 function cssVar(n) {
-  return getComputedStyle(document.body).getPropertyValue(n).trim();
+  return getComputedStyle(root).getPropertyValue(n).trim();
 }
 
 function todayStr() {
@@ -557,7 +600,8 @@ function drawHero(agg, from, to) {
   if (state.source.noCoverage) $('h-watched').textContent = 'not recorded';
   else {
     const span = agg.dates.length * 86400;
-    $('h-watched').textContent = agg.coverS ? `${dur(agg.coverS)} (${Math.round((agg.coverS / span) * 100)}%)` : '–';
+    const pct = (agg.coverS / span) * 100;
+    $('h-watched').textContent = agg.coverS ? `${dur(agg.coverS)} (${pct < 1 ? 'under 1' : Math.round(pct)}%)` : '–';
   }
 }
 
@@ -586,7 +630,7 @@ function drawHourly(agg, from, to) {
       ? `Each hour of the day averaged over the ${nDays} days, counting only time the camera was watched.`
       : `Each hour of the day averaged over the ${nDays} days.`;
   const watched = state.source.noCoverage ? null : cov.map((s) => s / (3600 * (single ? 1 : nDays)));
-  document.querySelector('.strip-note').hidden = !watched;
+  root.querySelector('.strip-note').hidden = !watched;
   columnChart($('c-hourly'), {
     labels: [...Array(24).keys()].map((h) => String(h)),
     showLabel: (i, band) => band >= 22 || i % 3 === 0,
@@ -658,7 +702,7 @@ function drawHeat(agg) {
   }
   card.hidden = false;
   const vals = sums.map((row, wd) => row.map((s, h) => (covs[wd][h] >= 600 ? (s / covs[wd][h]) * 3600 : null)));
-  const dark = getComputedStyle(document.body).getPropertyValue('--chart-surface').trim().toLowerCase() !== '#ffffff';
+  const dark = getComputedStyle(root).getPropertyValue('--chart-surface').trim().toLowerCase() !== '#ffffff';
   const ramp = dark ? RAMP_DARK : RAMP_LIGHT;
   const { max } = heatmap($('c-heat'), {
     rowLabels: WEEKDAYS,
@@ -783,7 +827,7 @@ function downloadTable() {
 
 // ------------------------------------------------------------------ helpers
 function setLoading(on) {
-  document.body.classList.toggle('is-loading', on);
+  root.classList.toggle('is-loading', on);
 }
 function showEmpty(msg) {
   setLoading(false);
@@ -808,6 +852,7 @@ function fmtDate(d, withYear = false) {
   return `${WEEKDAYS[weekday(d)]} ${day} ${MONTHS[m - 1]}${withYear ? ` ${y}` : ''}`;
 }
 function dur(s) {
+  if (s < 60) return `${Math.round(s)} s`;
   const m = Math.round(s / 60);
   if (m < 60) return `${m} min`;
   const h = Math.floor(m / 60);
