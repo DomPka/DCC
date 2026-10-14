@@ -113,14 +113,6 @@ This fine-tunes YOLO26n on the lab's Roboflow dataset *cars-from-drone* (bicycle
 
 Any detection model exported to ONNX works: YOLOv8/9/11/26 (Ultralytics export), YOLOv5, and YOLOv7 exported with `export.py --grid --simplify` (or `--end2end`). Class names are read from the file when present.
 
-## Publish on GitHub Pages
-
-1. Push this folder to a GitHub repository.
-2. **Settings → Pages → Build and deployment → Source: Deploy from a branch**, branch `main`, folder `/ (root)`.
-3. Open `https://<user>.github.io/<repository>/`.
-
-GitHub Pages cannot send the cross-origin isolation headers that multi-threaded WebAssembly needs, so `sw.js` adds them; the page reloads itself once on the very first visit to switch them on. When you change app files, bump `VERSION` in `sw.js` so installed copies update.
-
 ## Run the browser counter locally
 
 ```bash

@@ -1,6 +1,8 @@
 // Service worker: offline app shell, cached model/runtime files, and the
 // cross-origin isolation headers (COOP/COEP) that GitHub Pages cannot send itself.
 // Isolation unlocks SharedArrayBuffer, so the CPU (WASM) detector can use several threads.
+// On the first visit the page reloads itself once so these headers take effect.
+// Bump VERSION whenever app files change, so installed copies update.
 
 const VERSION = '2.1.0';
 const SHELL_CACHE = `cc-shell-${VERSION}`;
